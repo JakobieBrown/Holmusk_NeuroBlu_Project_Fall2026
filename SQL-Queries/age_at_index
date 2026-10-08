@@ -1,0 +1,11 @@
+SELECT
+    p.person_id,
+    p.year_of_birth,
+    EXTRACT(YEAR FROM MIN(co.condition_start_date)) AS index_year,
+    EXTRACT(YEAR FROM MIN(co.condition_start_date)) - p.year_of_birth AS age_at_index
+FROM person p
+JOIN condition_occurrence co
+    on p.person_id=co.person_id
+GROUP BY p.person_id, p.year_of_birth
+ORDER BY RAND(729) -- This seed is just in case we need to reproduce a given set of results. It's not really critical.
+limit 100;
