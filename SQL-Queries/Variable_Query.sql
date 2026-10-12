@@ -117,9 +117,9 @@ SELECT
     p9.phq9_total_score,
     p9.phq9_severity_category,
     p9i.phq9_item9_value,
-    sud.sud_active_flag,
-    sud.sud_history_flag,
-    pd.personality_disorder_flag
+    COALESCE(sud.sud_active_flag, 0)                   AS sud_active_flag,
+    COALESCE(sud.sud_history_flag, 0)                  AS sud_history_flag,
+    COALESCE(pd.personality_disorder_flag, 0)          AS personality_disorder_flag
 FROM cohort(4393589) c
 LEFT JOIN prior_psych_inpatient     pi  ON pi.person_id  = c.person_id
 LEFT JOIN phq9_total_latest         p9  ON p9.person_id  = c.person_id
