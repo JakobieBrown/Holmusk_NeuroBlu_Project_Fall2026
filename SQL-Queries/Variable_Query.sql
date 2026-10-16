@@ -72,6 +72,76 @@ phq9_item9_latest AS (
     WHERE rn = 1
 ),
 
+phq2_total_ranked AS (
+    SELECT
+        c.person_id,
+        c.index_date,
+        m.measurement_date,
+        m.value_as_number AS phq2_total_score,
+        ROW_NUMBER() OVER (PARTITION BY c.person_id ORDER BY m.measurement_date DESC) AS rn
+    FROM cohort(4393589) c
+    JOIN measurement m
+        ON m.person_id = c.person_id
+       AND m.measurement_date <= c.index_date
+    JOIN measurement_lookup ml
+        ON m.measurement_concept_id = ml.measurement_concept_id
+       AND ml.scale = 'phq-2'
+       AND ml.scale_item = 0
+),
+phq2_total_latest AS (
+    SELECT
+        person_id,
+        phq2_total_score
+    FROM phq2_total_ranked
+    WHERE rn = 1
+),
+phq9_items12_by_date AS (
+    SELECT
+        c.person_id,
+        m.measurement_date,
+        MAX(CASE WHEN ml.scale_item = 1 THEN m.value_as_number END) AS item1,
+        MAX(CASE WHEN ml.scale_item = 2 THEN m.value_as_number END) AS item2
+    FROM cohort(4393589) c
+    JOIN measurement m
+        ON m.person_id = c.person_id
+       AND m.measurement_date <= c.index_date
+    JOIN measurement_lookup ml
+        ON m.measurement_concept_id = ml.measurement_concept_id
+       AND ml.scale = 'phq-9'
+       AND ml.scale_item IN (1, 2)
+    GROUP BY c.person_id, m.measurement_date
+),
+phq2_derived_ranked AS (
+    SELECT
+        person_id,
+        item1 + item2 AS phq2_total_score_derived,
+        ROW_NUMBER() OVER (PARTITION BY person_id ORDER BY measurement_date DESC) AS rn
+    FROM phq9_items12_by_date
+    WHERE item1 IS NOT NULL AND item2 IS NOT NULL
+),
+phq2_derived_latest AS (
+    SELECT person_id, phq2_total_score_derived
+    FROM phq2_derived_ranked
+    WHERE rn = 1
+),
+phq2_combined AS (
+    SELECT
+        COALESCE(r.person_id, d.person_id) AS person_id,
+        COALESCE(r.phq2_total_score, d.phq2_total_score_derived) AS phq2_total_score
+    FROM phq2_total_latest r
+    FULL OUTER JOIN phq2_derived_latest d
+        ON d.person_id = r.person_id
+),
+phq2_final AS (
+    SELECT
+        person_id,
+        phq2_total_score,
+        CASE
+            WHEN phq2_total_score BETWEEN 0 AND 2 THEN 'no depression'
+            WHEN phq2_total_score BETWEEN 3 AND 6 THEN 'likely depression'
+        END AS phq2_severity_category
+    FROM phq2_combined
+),
 sud_flags AS (
     SELECT
         c.person_id,
@@ -188,6 +258,8 @@ SELECT
     p9.phq9_total_score,
     p9.phq9_severity_category,
     p9i.phq9_item9_value,
+    p2.phq2_total_score,
+    p2.phq2_severity_category,
     COALESCE(sud.sud_active_flag, 0)                   AS sud_active_flag,
     COALESCE(sud.sud_history_flag, 0)                  AS sud_history_flag,
     COALESCE(pd.personality_disorder_flag, 0)          AS personality_disorder_flag,
@@ -200,6 +272,7 @@ SELECT
     
 FROM cohort(4393589) c
 LEFT JOIN prior_psych_inpatient     pi  ON pi.person_id  = c.person_id
+LEFT JOIN phq2_final                p2  ON p2.person_id  = c.person_id
 LEFT JOIN phq9_total_latest         p9  ON p9.person_id  = c.person_id
 LEFT JOIN phq9_item9_latest         p9i ON p9i.person_id = c.person_id
 LEFT JOIN sud_flags                 sud ON sud.person_id = c.person_id
