@@ -60,6 +60,7 @@ This project uses the **OMOP Common Data Model** via the NeuroBlu platform. Key 
 ## Project Timeline
 
 | Phase | Time Period | Activities |
+|---|---|---|
 | Discovery | Sept. 7 - Sept. 20 | Data sources, preprocessing, and Cohort Definition |
 | Preparation | Sept. 21 - Oct. 11 | Data cleaning and Feature Engineering |
 | Development | Oct. 12 - Nov. 8 | Modeling and Pipeline Implementation |
