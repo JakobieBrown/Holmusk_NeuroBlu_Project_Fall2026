@@ -1,20 +1,48 @@
-
-WITH prior_psych_inpatient AS (
+WITH cohort AS (
     SELECT
+    co.person_id,
+    MIN(co.condition_start_date) AS index_date
+    FROM condition_occurrence co
+    JOIN diagnosis_lookup dl
+        ON co.condition_concept_id = dl.icd_concept_id
+    JOIN person p
+        ON co.person_id = p.person_id
+    JOIN (
+        SELECT
+            person_id,
+            MIN(observation_period_start_date) AS obs_start_date
+        FROM observation_period
+        GROUP BY person_id
+    ) op
+    ON co.person_id = op.person_id
+        WHERE dl.disorder_without_specifiers = 'major depressive disorder'
+            AND co.condition_start_date IS NOT NULL
+    GROUP BY co.person_id, p.birth_datetime, op.obs_start_date
+    HAVING MIN(co.condition_start_date) >= (p.birth_datetime + INTERVAL '18 years')
+        AND op.obs_start_date <= MIN(co.condition_start_date) - INTERVAL '12 months'
+),
+psych_ip AS (
+    SELECT
+        vo.person_id,
+        vo.visit_start_date,
+        COALESCE(vo.visit_end_date, vo.visit_start_date) AS visit_end_date
+    FROM visit_occurrence vo
+    JOIN care_site cs
+        ON vo.care_site_id = cs.care_site_id
+    WHERE vo.visit_concept_id = 9201
+      AND cs.is_psych = 1
+),
+prior_psych_inpatient AS (
+SELECT
         c.person_id,
         c.index_date,
-        COUNT(vo.visit_occurrence_id) AS psych_ip_count_all_time,
-        SUM(CASE WHEN vo.visit_start_date >= DATEADD(day, -90,  c.index_date) THEN 1 ELSE 0 END) AS psych_ip_count_90d,
-        SUM(CASE WHEN vo.visit_start_date >= DATEADD(day, -180, c.index_date) THEN 1 ELSE 0 END) AS psych_ip_count_180d,
-        SUM(CASE WHEN vo.visit_start_date >= DATEADD(day, -365, c.index_date) THEN 1 ELSE 0 END) AS psych_ip_count_365d
-    FROM cohort(4393589) c
-    LEFT JOIN visit_occurrence vo
-        ON vo.person_id = c.person_id
-       AND vo.visit_concept_id = 9201
-       AND vo.visit_start_date <= c.index_date
-    LEFT JOIN care_site cs
-        ON vo.care_site_id = cs.care_site_id
-       AND cs.is_psych = 1
+        SUM(CASE WHEN pv.visit_start_date >= c.index_date - INTERVAL '90 days' THEN 1 ELSE 0 END) AS psych_ip_count_90d,
+        SUM(CASE WHEN pv.visit_start_date >= c.index_date - INTERVAL '180 days' THEN 1 ELSE 0 END) AS psych_ip_count_180d,
+        SUM(CASE WHEN pv.visit_start_date >= c.index_date - INTERVAL '365 days' THEN 1 ELSE 0 END) AS psych_ip_count_365d
+    FROM cohort c
+    LEFT JOIN psych_ip pv
+        ON pv.person_id = c.person_id
+       AND pv.visit_start_date <= c.index_date
     GROUP BY c.person_id, c.index_date
 ),
 
@@ -25,7 +53,7 @@ phq9_total_ranked AS (
         m.measurement_date,
         m.value_as_number AS phq9_total_score,
         ROW_NUMBER() OVER (PARTITION BY c.person_id ORDER BY m.measurement_date DESC) AS rn
-    FROM cohort(4393589) c
+    FROM cohort c
     JOIN measurement m
         ON m.person_id = c.person_id
        AND m.measurement_date <= c.index_date
@@ -55,7 +83,7 @@ phq9_item9_ranked AS (
         c.index_date,
         m.value_as_number AS phq9_item9_value,
         ROW_NUMBER() OVER (PARTITION BY c.person_id ORDER BY m.measurement_date DESC) AS rn
-    FROM cohort(4393589) c
+    FROM cohort c
     JOIN measurement m
         ON m.person_id = c.person_id
        AND m.measurement_date <= c.index_date
@@ -77,11 +105,11 @@ sud_flags AS (
         c.person_id,
         MAX(CASE
                 WHEN co.condition_start_date IS NOT NULL
-                AND co.condition_end_date IS NULL
+                AND (co.condition_end_date IS NULL OR co.condition_end_date > c.index_date)
                 THEN 1 ELSE 0
             END) AS sud_active_flag,
         MAX(CASE WHEN co.condition_start_date IS NOT NULL THEN 1 ELSE 0 END) AS sud_history_flag
-    FROM cohort(4393589) c
+    FROM cohort c
     LEFT JOIN condition_occurrence co
         ON co.person_id = c.person_id
        AND co.condition_start_date <= c.index_date
@@ -96,7 +124,7 @@ personality_disorder_flag AS (
     SELECT
         c.person_id,
         MAX(CASE WHEN co.condition_start_date IS NOT NULL THEN 1 ELSE 0 END) AS personality_disorder_flag
-    FROM cohort(4393589) c
+    FROM cohort c
     LEFT JOIN condition_occurrence co
         ON co.person_id = c.person_id
        AND co.condition_start_date <= c.index_date
@@ -113,7 +141,7 @@ cssrs_items AS (
         m.custom2_str,
         m.value_as_number,
         m.value_as_concept_id
-    FROM cohort(4393589) c
+    FROM cohort c
     JOIN measurement m
         ON m.person_id = c.person_id
        AND m.measurement_date <= c.index_date
@@ -184,7 +212,6 @@ SELECT
     pi.psych_ip_count_90d,
     pi.psych_ip_count_180d,
     pi.psych_ip_count_365d,
-    pi.psych_ip_count_all_time,
     p9.phq9_total_score,
     p9.phq9_severity_category,
     p9i.phq9_item9_value,
@@ -198,7 +225,7 @@ SELECT
     cf.cssrs_si_intent_plan_1m,
     COALESCE(cf.cssrs_most_severe_si_1m, cf.cssrs_most_severe_si_derived) AS cssrs_most_severe_si_1m
     
-FROM cohort(4393589) c
+FROM cohort c
 LEFT JOIN prior_psych_inpatient     pi  ON pi.person_id  = c.person_id
 LEFT JOIN phq9_total_latest         p9  ON p9.person_id  = c.person_id
 LEFT JOIN phq9_item9_latest         p9i ON p9i.person_id = c.person_id
