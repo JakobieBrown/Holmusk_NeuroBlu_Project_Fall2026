@@ -143,6 +143,45 @@ def plot_reliability(Y_test, p_raw, p_cal, title, filename):
     plt.close(fig)
 
 
+def plot_skew(dataframe, date_col, label_col, cuts, filename):
+    """Left: share of all patients vs share of all events by index year.
+    Right: outcome rate by index year (log scale; marker size = number of events).
+    cuts = [(label, date), ...] draws dotted lines where the temporal splits begin."""
+    year = dataframe[date_col].dt.year
+    by_year = dataframe.groupby(year)[label_col].agg(rows="size", events="sum")
+    by_year["pct_rows"] = 100 * by_year["rows"] / by_year["rows"].sum()
+    by_year["pct_events"] = 100 * by_year["events"] / by_year["events"].sum()
+    by_year["rate_pct"] = 100 * by_year["events"] / by_year["rows"]
+    overall = 100 * dataframe[label_col].mean()
+    x = by_year.index.values
+
+    fig, ax = plt.subplots(1, 2, figsize=(13, 4.8))
+    ax[0].bar(x - 0.2, by_year["pct_rows"], width=0.4, label="% of all patients")
+    ax[0].bar(x + 0.2, by_year["pct_events"], width=0.4, label="% of all events")
+    ax[0].set(xlabel="Index year", ylabel="Share of total (%)", title="Patients vs events by index year")
+
+    rate = by_year["rate_pct"].where(by_year["events"] > 0)
+    ax[1].plot(x, rate, color="gray", linewidth=1)
+    ax[1].scatter(x, rate, s=20 + 6 * np.sqrt(by_year["events"]), color="tab:blue", zorder=3)
+    ax[1].axhline(overall, ls="--", color="gray", label=f"overall {overall:.3f}%")
+    ax[1].set_yscale("log")
+    ax[1].set(xlabel="Index year", ylabel="Positive rate (%, log scale)", title="Outcome rate by index year (marker size = events)")
+
+    ax[0].legend(fontsize=8, loc="upper left")
+    ax[1].legend(fontsize=8, loc="lower left")
+    for a in ax:
+        a.set_xticks(x[::2])
+        a.tick_params(axis="x", rotation=60)
+        if cuts:
+            for label, d in cuts:
+                pos = d.year - 0.5 + (d.dayofyear - 1) / 365
+                a.axvline(pos, ls=":", color="black")
+                a.text(pos, a.get_ylim()[1], f" {label}", rotation=90, va="top", ha="left", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=150)
+    plt.close(fig)
+
+
 def shap_plots(model, X_test, name, sample=20000):
     X_s = X_test.sample(n=min(sample, len(X_test)), random_state=42)
     values = shap.TreeExplainer(model).shap_values(X_s)
