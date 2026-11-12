@@ -27,7 +27,7 @@ MISSING_INDICATORS = {"phq9_total_missing": "phq9_total_score",
                       "phq9_item9_missing": "phq9_item9_value",
                       "cssrs_missing": "cssrs_wish_to_be_dead_1m"}
 
-SPLIT_MODE = "random"      # "temporal" (train on earlier index dates) or "random" (grouped by person_id)
+SPLIT_MODE = "temporal"      # "temporal" (train on earlier index dates) or "random" (grouped by person_id)
 TRAIN_FRAC = 0.60
 VAL_FRAC = 0.20              # test = the remainder
 APPLY_TAIL_CUTOFF = True     # negatives need full follow-up but positives don't, so the latest index dates are all positives
