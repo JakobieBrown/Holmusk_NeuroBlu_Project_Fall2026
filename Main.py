@@ -278,6 +278,16 @@ def main():
     Models.plot_reliability(Y_test, results[best]["p_test"], results[best]["p_test_cal"],
                             f"Calibration ({best}, test)", f"mdd_hosp90_reliability_{best}.png")
 
+        #graph the skew in patients and events across index years
+
+    cuts = None
+
+    if SPLIT_MODE == "temporal":
+
+        cuts = [("train/val", dataframe.loc[val_mask, DATE].min()), ("val/test", dataframe.loc[test_mask, DATE].min())]
+
+    Models.plot_skew(dataframe, DATE, LABEL, cuts, "mdd_hosp90_skew.png")
+
     if best in ("xgboost", "lightgbm", "catboost"):
 
         importance = Models.shap_plots(results[best]["model"], X_test, best)

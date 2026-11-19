@@ -12,16 +12,18 @@ def Cohort_Query():
         JOIN (
             SELECT
                 person_id,
-                MIN(observation_period_start_date) AS obs_start_date
+                observation_period_start_date AS obs_start_date,
+                observation_period_end_date AS obs_end_date
             FROM observation_period
-            GROUP BY person_id
+            GROUP BY person_id, observation_period_start_date, observation_period_end_date
         ) op
         ON co.person_id = op.person_id
             WHERE dl.disorder_without_specifiers = 'major depressive disorder'
                 AND co.condition_start_date IS NOT NULL
-        GROUP BY co.person_id, p.birth_datetime, op.obs_start_date
+        GROUP BY co.person_id, p.birth_datetime, op.obs_start_date, op.obs_end_date
         HAVING MIN(co.condition_start_date) >= (p.birth_datetime + INTERVAL '18 years')
             AND op.obs_start_date <= MIN(co.condition_start_date) - INTERVAL '12 months'
+            AND op.obs_end_date >= MIN(co.condition_start_date) + INTERVAL '90 days'
 '''
 
 def Master_Features():
@@ -254,10 +256,7 @@ def Label_Query():
             vo.visit_start_date,
             COALESCE(vo.visit_end_date, vo.visit_start_date) AS visit_end_date
         FROM visit_occurrence vo
-        JOIN care_site cs
-            ON vo.care_site_id = cs.care_site_id
         WHERE vo.visit_concept_id = 9201
-        AND cs.is_psych = 1
     ),
     cohort_obs AS (
         SELECT
