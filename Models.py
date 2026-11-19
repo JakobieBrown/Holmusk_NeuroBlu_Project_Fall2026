@@ -192,6 +192,7 @@ def shap_plots(model, X_test, name, sample=20000):
     for kind in ("bar", "dot"):
         plt.figure()
         shap.summary_plot(values, X_s, plot_type=kind, show=False, max_display=20)
+        plt.gcf().axes[0].set_title(f"SHAP feature impact ({name}, test sample of {len(X_s):,})")
         plt.tight_layout()
         plt.savefig(f"mdd_hosp90_shap_{name}_{kind}.png", dpi=150, bbox_inches="tight")
         plt.close()
